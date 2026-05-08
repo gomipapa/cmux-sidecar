@@ -29,12 +29,17 @@ Flags:
 - `--project=PATH` — target project dir when `--scope=project` (default `$PWD`)
 - `--tool=claude-code,codex,all` — adapters to install
 - `--install-deps` / `--no-install-deps` — brew-install code-server when missing (interactive mode prompts; non-interactive skips by default)
+- `--theme=NAME` — code-server VSCode theme (e.g. `"Default Dark Modern"`, `"Monokai"`)
+- `--font-size=N` — editor font size (integer)
+- `--no-config` — skip the appearance prompt and settings.json write
 - `--force` / `--no-clobber` — overwrite policy
 - `--dry-run` — print actions without writing
 - `-y, --yes` — skip the final confirmation prompt
 - `--no-color` — disable ANSI colors
 
 The interactive wizard supports arrow-key navigation (↑/↓ to move, Enter to select, 1-9 for quick select, q/ESC to abort). It falls back to a numbered menu when no TTY is available.
+
+If you set a theme or font size, the values are merged into `<user-data-dir>/User/settings.json` (existing keys are preserved; only the affected keys are overwritten). The default user-data-dir is `$HOME/.local/share/code-server` (override via `CMUX_SIDECAR_USER_DATA`).
 
 ## Usage
 

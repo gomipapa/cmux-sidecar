@@ -20,6 +20,9 @@ DRY_RUN=0
 INTERACTIVE=1
 INSTALL_DEPS=""   # "" = ask in interactive / skip in non-interactive; "1" yes; "0" no
 ASSUME_YES=0
+THEME=""          # code-server: workbench.colorTheme  (e.g. "Default Dark Modern")
+FONT_SIZE=""      # code-server: editor.fontSize       (integer)
+SKIP_CONFIG=0     # if 1, skip the appearance prompt + settings.json write
 
 # ---------- color helpers ----------
 USE_COLOR=1
@@ -51,6 +54,9 @@ Options (all imply non-interactive mode):
   --tool=LIST            claude-code,codex,all (default: all). comma-separated.
   --install-deps         install missing dependencies (currently: code-server via brew)
   --no-install-deps      skip dependency install
+  --theme=NAME           code-server VSCode theme (e.g. "Default Dark Modern")
+  --font-size=N          code-server editor font size (integer, e.g. 14)
+  --no-config            skip the appearance prompt and settings.json write
   --force                overwrite existing files without backup
   --no-clobber           skip existing files
   --dry-run              print actions without performing them
@@ -69,6 +75,9 @@ for arg in "$@"; do
     --tool=*)           TOOL_PICK="${arg#*=}"; INTERACTIVE=0 ;;
     --install-deps)     INSTALL_DEPS=1; INTERACTIVE=0 ;;
     --no-install-deps)  INSTALL_DEPS=0; INTERACTIVE=0 ;;
+    --theme=*)          THEME="${arg#*=}"; INTERACTIVE=0 ;;
+    --font-size=*)      FONT_SIZE="${arg#*=}"; INTERACTIVE=0 ;;
+    --no-config)        SKIP_CONFIG=1; INTERACTIVE=0 ;;
     --force)            FORCE=1 ;;
     --no-clobber)       NO_CLOBBER=1 ;;
     --dry-run)          DRY_RUN=1 ;;
@@ -342,6 +351,41 @@ if (( CMUX_MISSING )); then
   printf '\n  %scmux is required but not handled here. install via your cmux distribution.%s\n' "$DIM" "$RESET"
 fi
 
+# ---------- step 4.5: appearance (theme + font size) ----------
+# Validate any pre-supplied font size early.
+if [[ -n "$FONT_SIZE" ]]; then
+  if ! [[ "$FONT_SIZE" =~ ^[0-9]+$ ]]; then
+    echo "${RED}invalid --font-size: $FONT_SIZE (must be integer)${RESET}" >&2
+    exit 2
+  fi
+fi
+
+if (( INTERACTIVE )) && (( ! SKIP_CONFIG )); then
+  if confirm "Customize VSCode appearance (theme / font size)?" N; then
+    arrow_menu "Theme" "Default Dark Modern" \
+      "Default Dark Modern" \
+      "Default Light Modern" \
+      "Default Dark+" \
+      "Default Light+" \
+      "Monokai" \
+      "Solarized Dark" \
+      "Solarized Light" \
+      "(skip)"
+    [[ "$REPLY_MENU" != "(skip)" ]] && THEME="$REPLY_MENU"
+
+    printf '\n%sFont size%s [14, blank to skip] %s ' "$BOLD" "$RESET" "$ICON_ARROW" >&"${TTY_OUT:-2}"
+    fs_ans=""
+    IFS= read -u "${TTY_FD:-0}" -r fs_ans || true
+    if [[ -n "$fs_ans" ]]; then
+      if [[ "$fs_ans" =~ ^[0-9]+$ ]]; then
+        FONT_SIZE="$fs_ans"
+      else
+        printf '  %sinvalid font size — leaving default%s\n' "$YELLOW" "$RESET" >&"${TTY_OUT:-2}"
+      fi
+    fi
+  fi
+fi
+
 # ---------- step 5: plan summary ----------
 adapter_dir_for() {
   local tool="$1"
@@ -354,12 +398,22 @@ adapter_dir_for() {
 }
 
 BIN_DST="$BIN_PREFIX/bin/cmux-sidecar"
+USER_DATA_DIR="${CMUX_SIDECAR_USER_DATA:-$HOME/.local/share/code-server}"
+SETTINGS_JSON="$USER_DATA_DIR/User/settings.json"
+
 declare -a PLAN_LINES=()
 PLAN_LINES+=("$(printf '%s  bin    → %s' "$ICON_BULLET" "$BIN_DST")")
 (( WILL_INSTALL_CS )) && PLAN_LINES+=("$(printf '%s  dep    → brew install code-server' "$ICON_BULLET")")
 for tool in "${TOOLS[@]}"; do
   PLAN_LINES+=("$(printf '%s  hook   → %s/sidecar.md  %s(%s)%s' "$ICON_BULLET" "$(adapter_dir_for "$tool")" "$DIM" "$tool" "$RESET")")
 done
+if [[ -n "$THEME" || -n "$FONT_SIZE" ]]; then
+  conf_parts=""
+  [[ -n "$THEME" ]]     && conf_parts+="theme=\"$THEME\""
+  [[ -n "$THEME" && -n "$FONT_SIZE" ]] && conf_parts+="  "
+  [[ -n "$FONT_SIZE" ]] && conf_parts+="fontSize=$FONT_SIZE"
+  PLAN_LINES+=("$(printf '%s  conf   → %s  %s(%s)%s' "$ICON_BULLET" "$conf_parts" "$DIM" "$SETTINGS_JSON" "$RESET")")
+fi
 
 section "Ready to install:"
 for line in "${PLAN_LINES[@]}"; do printf '  %s\n' "$line"; done
@@ -444,6 +498,48 @@ for tool in "${TOOLS[@]}"; do
   fi
   install_file "$src" "$(adapter_dir_for "$tool")/sidecar.md" "hook"
 done
+
+# Apply code-server settings (theme / font size) by merging into User/settings.json
+if [[ -n "$THEME" || -n "$FONT_SIZE" ]]; then
+  if (( DRY_RUN )); then
+    printf '  %s  %-7s %sdry: would merge into %s%s\n' "$ICON_BULLET" "conf" "$DIM" "$SETTINGS_JSON" "$RESET"
+  else
+    do_run "mkdir -p \"$(dirname "$SETTINGS_JSON")\""
+    if python3 - "$SETTINGS_JSON" "$THEME" "$FONT_SIZE" <<'PYEOF'
+import json, os, sys
+path, theme, font_size = sys.argv[1], sys.argv[2], sys.argv[3]
+data = {}
+if os.path.exists(path):
+    with open(path, 'r') as f:
+        raw = f.read()
+    try:
+        data = json.loads(raw) if raw.strip() else {}
+    except json.JSONDecodeError:
+        bak = path + '.bak'
+        with open(bak, 'w') as f:
+            f.write(raw)
+        print(f"warn: existing settings.json was not strict JSON; backed up to {bak}", file=sys.stderr)
+        data = {}
+if not isinstance(data, dict):
+    data = {}
+if theme:
+    data['workbench.colorTheme'] = theme
+if font_size:
+    data['editor.fontSize'] = int(font_size)
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+PYEOF
+    then
+      printf '  %s  %-7s %s' "$ICON_OK" "conf" "$SETTINGS_JSON"
+      [[ -n "$THEME" ]]     && printf '  %s(theme=%s)%s' "$DIM" "$THEME" "$RESET"
+      [[ -n "$FONT_SIZE" ]] && printf '  %s(fontSize=%s)%s' "$DIM" "$FONT_SIZE" "$RESET"
+      printf '\n'
+    else
+      printf '  %s  %-7s settings merge failed (continuing)\n' "$ICON_FAIL" "conf"
+    fi
+  fi
+fi
 
 # ---------- step 8: outro ----------
 if (( DRY_RUN )); then
