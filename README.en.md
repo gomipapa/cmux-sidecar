@@ -61,15 +61,6 @@ If you set a theme or font size, the values are merged into `<user-data-dir>/Use
 
 Legacy `CMUX_CODE_VIEWER_*` environment variables are also recognized as fallbacks.
 
-## Migration (legacy users)
-
-Users of the old `cmux-code-viewer` can manually remove the legacy assets after installing cmux-sidecar:
-
-```sh
-rm -f ~/.local/bin/cmux-code-viewer
-rm -f ~/.claude/commands/code-viewer.md
-```
-
 ## Uninstall
 
 ```sh
