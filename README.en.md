@@ -32,6 +32,7 @@ Flags:
 - `--theme=NAME` — code-server VSCode theme (e.g. `"Default Dark Modern"`, `"Monokai"`)
 - `--font-size=N` — editor font size (integer)
 - `--no-config` — skip the appearance prompt and settings.json write
+- `--auth=none|password` — code-server auth mode (default `none`, since the wrapper binds to 127.0.0.1 only)
 - `--force` / `--no-clobber` — overwrite policy
 - `--dry-run` — print actions without writing
 - `-y, --yes` — skip the final confirmation prompt

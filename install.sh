@@ -23,6 +23,7 @@ ASSUME_YES=0
 THEME=""          # code-server: workbench.colorTheme  (e.g. "Default Dark Modern")
 FONT_SIZE=""      # code-server: editor.fontSize       (integer)
 SKIP_CONFIG=0     # if 1, skip the appearance prompt + settings.json write
+AUTH_MODE=""      # "" ask / "none" / "password"   (code-server config.yaml)
 
 # ---------- color helpers ----------
 USE_COLOR=1
@@ -57,6 +58,8 @@ Options (all imply non-interactive mode):
   --theme=NAME           code-server VSCode theme (e.g. "Default Dark Modern")
   --font-size=N          code-server editor font size (integer, e.g. 14)
   --no-config            skip the appearance prompt and settings.json write
+  --auth=MODE            code-server auth mode: none | password
+                         (default: none — local-only loopback bind)
   --force                overwrite existing files without backup
   --no-clobber           skip existing files
   --dry-run              print actions without performing them
@@ -78,6 +81,7 @@ for arg in "$@"; do
     --theme=*)          THEME="${arg#*=}"; INTERACTIVE=0 ;;
     --font-size=*)      FONT_SIZE="${arg#*=}"; INTERACTIVE=0 ;;
     --no-config)        SKIP_CONFIG=1; INTERACTIVE=0 ;;
+    --auth=*)           AUTH_MODE="${arg#*=}"; INTERACTIVE=0 ;;
     --force)            FORCE=1 ;;
     --no-clobber)       NO_CLOBBER=1 ;;
     --dry-run)          DRY_RUN=1 ;;
@@ -386,6 +390,25 @@ if (( INTERACTIVE )) && (( ! SKIP_CONFIG )); then
   fi
 fi
 
+# ---------- step 4.6: code-server auth mode ----------
+if [[ -n "$AUTH_MODE" ]]; then
+  case "$AUTH_MODE" in
+    none|password) ;;
+    *) echo "${RED}invalid --auth: $AUTH_MODE (must be none|password)${RESET}" >&2; exit 2 ;;
+  esac
+fi
+if [[ -z "$AUTH_MODE" ]]; then
+  if (( INTERACTIVE )) && (( ! SKIP_CONFIG )); then
+    if confirm "Disable code-server password (recommended for 127.0.0.1-only use)?" Y; then
+      AUTH_MODE="none"
+    else
+      AUTH_MODE="password"
+    fi
+  else
+    AUTH_MODE="none"
+  fi
+fi
+
 # ---------- step 5: plan summary ----------
 adapter_dir_for() {
   local tool="$1"
@@ -400,6 +423,9 @@ adapter_dir_for() {
 BIN_DST="$BIN_PREFIX/bin/cmux-sidecar"
 USER_DATA_DIR="${CMUX_SIDECAR_USER_DATA:-$HOME/.local/share/code-server}"
 SETTINGS_JSON="$USER_DATA_DIR/User/settings.json"
+CS_URL_DEFAULT="${CMUX_SIDECAR_URL:-http://127.0.0.1:8080}"
+BIND_ADDR="${CS_URL_DEFAULT#*://}"
+BIND_ADDR="${BIND_ADDR%%/*}"
 
 declare -a PLAN_LINES=()
 PLAN_LINES+=("$(printf '%s  bin    → %s' "$ICON_BULLET" "$BIN_DST")")
@@ -414,6 +440,7 @@ if [[ -n "$THEME" || -n "$FONT_SIZE" ]]; then
   [[ -n "$FONT_SIZE" ]] && conf_parts+="fontSize=$FONT_SIZE"
   PLAN_LINES+=("$(printf '%s  conf   → %s  %s(%s)%s' "$ICON_BULLET" "$conf_parts" "$DIM" "$SETTINGS_JSON" "$RESET")")
 fi
+PLAN_LINES+=("$(printf '%s  auth   → code-server auth=%s  %s(~/.config/code-server/config.yaml)%s' "$ICON_BULLET" "$AUTH_MODE" "$DIM" "$RESET")")
 
 section "Ready to install:"
 for line in "${PLAN_LINES[@]}"; do printf '  %s\n' "$line"; done
@@ -498,6 +525,45 @@ for tool in "${TOOLS[@]}"; do
   fi
   install_file "$src" "$(adapter_dir_for "$tool")/sidecar.md" "hook"
 done
+
+# Apply code-server auth mode by editing config.yaml; stop running instance
+# so it picks up the new config on next lazy-start.
+apply_auth_mode() {
+  local cfg="$HOME/.config/code-server/config.yaml"
+  local cfg_dir; cfg_dir="$(dirname "$cfg")"
+  do_run "mkdir -p \"$cfg_dir\""
+  if [[ ! -f "$cfg" ]]; then
+    if (( DRY_RUN )); then
+      printf '    %s[dry] write fresh config: auth=%s, bind-addr=%s%s\n' "$DIM" "$AUTH_MODE" "$BIND_ADDR" "$RESET"
+    else
+      cat > "$cfg" <<EOF
+bind-addr: $BIND_ADDR
+auth: $AUTH_MODE
+EOF
+    fi
+  else
+    if grep -qE '^auth:' "$cfg"; then
+      if (( DRY_RUN )); then
+        printf '    %s[dry] sed -E s/^auth:.*/auth: %s/ %s%s\n' "$DIM" "$AUTH_MODE" "$cfg" "$RESET"
+      else
+        local tmp="${cfg}.cmux-sidecar.tmp"
+        sed -E "s/^auth: .*/auth: $AUTH_MODE/" "$cfg" > "$tmp" && mv "$tmp" "$cfg"
+      fi
+    else
+      do_run "printf 'auth: %s\\n' \"$AUTH_MODE\" >> \"$cfg\""
+    fi
+  fi
+  # Stop running instance if any (so new config takes effect)
+  if pgrep -f code-server >/dev/null 2>&1; then
+    if (( DRY_RUN )); then
+      printf '    %s[dry] pkill -f code-server%s\n' "$DIM" "$RESET"
+    else
+      pkill -f code-server 2>/dev/null || true
+    fi
+  fi
+}
+apply_auth_mode
+printf '  %s  %-7s code-server auth=%s\n' "$ICON_OK" "auth" "$AUTH_MODE"
 
 # Apply code-server settings (theme / font size) by merging into User/settings.json
 if [[ -n "$THEME" || -n "$FONT_SIZE" ]]; then
