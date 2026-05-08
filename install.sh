@@ -526,15 +526,16 @@ for tool in "${TOOLS[@]}"; do
   install_file "$src" "$(adapter_dir_for "$tool")/sidecar.md" "hook"
 done
 
-# Apply code-server auth mode by editing config.yaml; stop running instance
-# so it picks up the new config on next lazy-start.
+# Apply code-server auth mode + bind-addr by editing config.yaml; stop running
+# instance so it picks up the new config on next lazy-start.
 apply_auth_mode() {
   local cfg="$HOME/.config/code-server/config.yaml"
   local cfg_dir; cfg_dir="$(dirname "$cfg")"
   do_run "mkdir -p \"$cfg_dir\""
+
   if [[ ! -f "$cfg" ]]; then
     if (( DRY_RUN )); then
-      printf '    %s[dry] write fresh config: auth=%s, bind-addr=%s%s\n' "$DIM" "$AUTH_MODE" "$BIND_ADDR" "$RESET"
+      printf '    %s[dry] write fresh config: bind-addr=%s, auth=%s%s\n' "$DIM" "$BIND_ADDR" "$AUTH_MODE" "$RESET"
     else
       cat > "$cfg" <<EOF
 bind-addr: $BIND_ADDR
@@ -542,18 +543,33 @@ auth: $AUTH_MODE
 EOF
     fi
   else
-    if grep -qE '^auth:' "$cfg"; then
-      if (( DRY_RUN )); then
-        printf '    %s[dry] sed -E s/^auth:.*/auth: %s/ %s%s\n' "$DIM" "$AUTH_MODE" "$cfg" "$RESET"
-      else
-        local tmp="${cfg}.cmux-sidecar.tmp"
-        sed -E "s/^auth: .*/auth: $AUTH_MODE/" "$cfg" > "$tmp" && mv "$tmp" "$cfg"
-      fi
+    # Update or append each key in place. Use python3 to avoid sed portability
+    # issues and to handle missing keys cleanly.
+    if (( DRY_RUN )); then
+      printf '    %s[dry] update %s: bind-addr=%s, auth=%s%s\n' "$DIM" "$cfg" "$BIND_ADDR" "$AUTH_MODE" "$RESET"
     else
-      do_run "printf 'auth: %s\\n' \"$AUTH_MODE\" >> \"$cfg\""
+      python3 - "$cfg" "$BIND_ADDR" "$AUTH_MODE" <<'PYEOF'
+import re, sys
+path, bind_addr, auth = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as f:
+    lines = f.readlines()
+def upsert(lines, key, value):
+    pat = re.compile(rf'^\s*{re.escape(key)}\s*:.*$')
+    for i, line in enumerate(lines):
+        if pat.match(line):
+            lines[i] = f"{key}: {value}\n"
+            return lines
+    lines.append(f"{key}: {value}\n")
+    return lines
+lines = upsert(lines, 'bind-addr', bind_addr)
+lines = upsert(lines, 'auth',      auth)
+with open(path, 'w') as f:
+    f.writelines(lines)
+PYEOF
     fi
   fi
-  # Stop running instance if any (so new config takes effect)
+
+  # Stop running instance so the new config takes effect on next lazy-start.
   if pgrep -f code-server >/dev/null 2>&1; then
     if (( DRY_RUN )); then
       printf '    %s[dry] pkill -f code-server%s\n' "$DIM" "$RESET"
