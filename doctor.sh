@@ -3,7 +3,7 @@
 # Output only. Never installs, never starts services.
 set -uo pipefail
 
-CODE_SERVER_URL="${CMUX_SIDECAR_URL:-${CMUX_CODE_VIEWER_URL:-http://127.0.0.1:8765}}"
+CODE_SERVER_URL="${CMUX_SIDECAR_URL:-${CMUX_CODE_VIEWER_URL:-http://127.0.0.1:8080}}"
 
 fail=0
 

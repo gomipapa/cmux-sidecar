@@ -6,11 +6,17 @@
 #   cmux-sidecar <path>         # opens <path> (file or dir). If file, opens parent folder + previews file.
 set -euo pipefail
 
-CODE_SERVER_URL="${CMUX_SIDECAR_URL:-${CMUX_CODE_VIEWER_URL:-http://127.0.0.1:8765}}"
+CODE_SERVER_URL="${CMUX_SIDECAR_URL:-${CMUX_CODE_VIEWER_URL:-http://127.0.0.1:8080}}"
 CODE_SERVER_USER_DATA="${CMUX_SIDECAR_USER_DATA:-${CMUX_CODE_VIEWER_USER_DATA:-$HOME/.local/share/code-server}}"
 CODE_SERVER_LOG="${CMUX_SIDECAR_LOG:-${CMUX_CODE_VIEWER_LOG:-/tmp/code-server.log}}"
 CODE_SERVER_LOCK="${CMUX_SIDECAR_LOCK:-${CMUX_CODE_VIEWER_LOCK:-/tmp/code-server.start.lockdir}}"
 START_TIMEOUT_S="${CMUX_SIDECAR_START_TIMEOUT:-${CMUX_CODE_VIEWER_START_TIMEOUT:-15}}"
+
+# Extract bind-addr (host:port) from CODE_SERVER_URL so we can pass it to
+# code-server explicitly when we spawn it — this prevents a stale config.yaml
+# `bind-addr:` from binding to an unexpected port.
+BIND_ADDR="${CODE_SERVER_URL#*://}"
+BIND_ADDR="${BIND_ADDR%%/*}"
 
 # 1) ensure code-server is up; start it lazily if not.
 # Mutex via atomic mkdir (POSIX-portable; flock is not available on stock macOS).
@@ -30,6 +36,7 @@ ensure_code_server() {
         return 127
       fi
       nohup code-server --user-data-dir "$CODE_SERVER_USER_DATA" \
+        --bind-addr "$BIND_ADDR" \
         >"$CODE_SERVER_LOG" 2>&1 < /dev/null &
       disown
     fi
