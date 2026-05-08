@@ -423,7 +423,7 @@ adapter_dir_for() {
 BIN_DST="$BIN_PREFIX/bin/cmux-sidecar"
 USER_DATA_DIR="${CMUX_SIDECAR_USER_DATA:-$HOME/.local/share/code-server}"
 SETTINGS_JSON="$USER_DATA_DIR/User/settings.json"
-CS_URL_DEFAULT="${CMUX_SIDECAR_URL:-http://127.0.0.1:8080}"
+CS_URL_DEFAULT="${CMUX_SIDECAR_URL:-http://127.0.0.1:8765}"
 BIND_ADDR="${CS_URL_DEFAULT#*://}"
 BIND_ADDR="${BIND_ADDR%%/*}"
 

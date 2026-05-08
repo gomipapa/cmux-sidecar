@@ -53,7 +53,7 @@ If you set a theme or font size, the values are merged into `<user-data-dir>/Use
 
 | Name | Default | Purpose |
 |---|---|---|
-| `CMUX_SIDECAR_URL` | `http://127.0.0.1:8080` | code-server URL (the wrapper enforces this port via `--bind-addr`) |
+| `CMUX_SIDECAR_URL` | `http://127.0.0.1:8765` | code-server URL (the wrapper enforces this port via `--bind-addr`; chosen to avoid the crowded 8080 dev port) |
 | `CMUX_SIDECAR_USER_DATA` | `$HOME/.local/share/code-server` | code-server `--user-data-dir` |
 | `CMUX_SIDECAR_LOG` | `/tmp/code-server.log` | lazy-start log path |
 | `CMUX_SIDECAR_LOCK` | `/tmp/code-server.start.lockdir` | start lock directory |
