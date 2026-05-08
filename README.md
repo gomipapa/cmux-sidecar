@@ -70,11 +70,18 @@ rm -f ~/.claude/commands/code-viewer.md
 ## 제거
 
 ```sh
-./uninstall.sh --scope=global
+./uninstall.sh --scope=global                            # 대화형
 ./uninstall.sh --scope=project --project=/path/to/project
+./uninstall.sh --remove-code-server --remove-code-server-data  # 모두 제거
+./uninstall.sh --keep-code-server --keep-code-server-data      # 어댑터만 제거
 ```
 
-설치 시 기록한 manifest(`~/.local/share/cmux-sidecar/installed-*.txt`)에 적힌 파일만 정확히 지운다.
+manifest(`~/.local/share/cmux-sidecar/installed-*.txt`)에 적힌 파일만 정확히 지운다. 그 다음 단계에서 code-server 자체(brew + 실행 프로세스)와 code-server 데이터 디렉터리(`~/.local/share/code-server`, `~/.config/code-server`, 로그·락)를 추가로 제거할지 묻는다.
+
+플래그:
+- `--remove-code-server` / `--keep-code-server` — code-server brew 제거 여부
+- `--remove-code-server-data` / `--keep-code-server-data` — 데이터 디렉터리 제거 여부
+- `--dry-run`, `-y, --yes`, `--no-color` — install.sh와 동일
 
 ## 트러블슈팅
 

@@ -72,11 +72,18 @@ rm -f ~/.claude/commands/code-viewer.md
 ## Uninstall
 
 ```sh
-./uninstall.sh --scope=global
+./uninstall.sh --scope=global                                  # interactive
 ./uninstall.sh --scope=project --project=/path/to/project
+./uninstall.sh --remove-code-server --remove-code-server-data  # nuke everything
+./uninstall.sh --keep-code-server --keep-code-server-data      # adapters only
 ```
 
-Removes only the exact paths recorded in the install manifest at `~/.local/share/cmux-sidecar/installed-*.txt`.
+The uninstaller first removes only the exact paths recorded in the install manifest at `~/.local/share/cmux-sidecar/installed-*.txt`. It then asks (interactively) whether to also brew-uninstall code-server and remove its data dirs (`~/.local/share/code-server`, `~/.config/code-server`, logs, lock dirs).
+
+Flags:
+- `--remove-code-server` / `--keep-code-server` — brew-uninstall code-server
+- `--remove-code-server-data` / `--keep-code-server-data` — wipe data dirs
+- `--dry-run`, `-y, --yes`, `--no-color` — same as install.sh
 
 ## Troubleshooting
 
